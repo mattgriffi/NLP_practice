@@ -1,11 +1,29 @@
 import nltk
 import random
+
 from nltk.corpus import movie_reviews, stopwords
 from nltk.classify.scikitlearn import SklearnClassifier
+from nltk.classify import ClassifierI
 
 from sklearn.naive_bayes import MultinomialNB, BernoulliNB
 from sklearn.linear_model import LogisticRegression, SGDClassifier
 from sklearn.svm import SVC, LinearSVC, NuSVC
+
+from statistics import mode
+
+
+class VoteClassifier(ClassifierI):
+    def __init__(self, *classifiers):
+        self._classifiers = classifiers
+        self._votes = []
+
+    def classify(self, featureset: list) -> list:
+        """Runs the given featureset through all classifiers. Returns the list of results."""
+        self._votes = [c.classify(featureset) for c in self._classifiers]
+        return mode(self._votes)
+
+    def get_confidence_of_latest_vote(self) -> float:
+        return self._votes.count(mode(self._votes)) / len(self._votes)
 
 
 def main():
@@ -39,6 +57,10 @@ def main():
     trained_algorithm_list = create_and_train_algorithms(algorithm_list, training_set)
     test_algorithm_accuracy(trained_algorithm_list, testing_set)
 
+    vote_classifier = VoteClassifier(*trained_algorithm_list)
+    print(f"{'VoteClassifier':<20} {nltk.classify.accuracy(vote_classifier, testing_set)}")
+    for i in range(10):
+        print(f"Classification: {vote_classifier.classify(testing_set[i][0])} Confidence: {vote_classifier.get_confidence_of_latest_vote()}")
 
 def create_and_train_algorithms(algorithm_list, training_set):
     """Takes a list of machine learning algorithm constructor functions. Instantiates each of
