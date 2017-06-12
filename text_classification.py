@@ -1,7 +1,11 @@
+import itertools
 import nltk
 import random
 
-from nltk.corpus import movie_reviews, stopwords
+
+from unidecode import unidecode
+
+from nltk.tokenize import word_tokenize
 from nltk.classify.scikitlearn import SklearnClassifier
 from nltk.classify import ClassifierI
 
@@ -18,7 +22,7 @@ class VoteClassifier(ClassifierI):
         self._votes = []
 
     def classify(self, featureset: list) -> list:
-        """Runs the given featureset through all classifiers. Returns the list of results."""
+        """Runs the given featureset through all classifiers. Returns the mode of results."""
         self._votes = [c.classify(featureset) for c in self._classifiers]
         return mode(self._votes)
 
@@ -31,26 +35,29 @@ def main():
     with open('english_dictionary.txt') as dict_file:
         english_words = {word.strip().lower() for word in dict_file}
 
-    documents = [(list(movie_reviews.words(fileid)), category)
-                 for category in movie_reviews.categories()
-                 for fileid in movie_reviews.fileids(category)]
+    documents = []
+    short_pos = unidecode(open('positive.txt').read())
+    short_neg = unidecode(open('negative.txt').read())
 
-    random.shuffle(documents)
+    for review in short_pos.split('\n'):
+        documents.append((review, 'pos'))
+    for review in short_neg.split('\n'):
+        documents.append((review, 'neg'))
+    short_pos_words = word_tokenize(short_pos)
+    short_neg_words = word_tokenize(short_neg)
 
-    eng_stop_words = set(stopwords.words('english'))
+    all_words = nltk.FreqDist(w.lower() for w in itertools.chain(short_pos_words, short_neg_words))
 
-    all_words = nltk.FreqDist(w.lower() for w in movie_reviews.words())
-
-    word_features = [w[0] for w in all_words.most_common(3000)
-                     if w[0] not in eng_stop_words and len(w[0]) > 3 and w[0] in english_words]
+    word_features = [w[0] for w in all_words.most_common(5000)
+                     if len(w[0]) > 2 and w[0] in english_words]
 
     featuresets = [(find_features(rev, word_features), category)
                    for (rev, category) in documents]
 
-    training_set = featuresets[:1900]
-    testing_set = featuresets[1900:]
+    random.shuffle(featuresets)
 
-    # nb_classifier = nltk.NaiveBayesClassifier.train(training_set)
+    training_set = featuresets[:10000]
+    testing_set = featuresets[10000:]
 
     algorithm_list = [MultinomialNB, BernoulliNB, LogisticRegression, SGDClassifier, SVC,
                       LinearSVC, NuSVC]
@@ -61,6 +68,7 @@ def main():
     print(f"{'VoteClassifier':<20} {nltk.classify.accuracy(vote_classifier, testing_set)}")
     for i in range(10):
         print(f"Classification: {vote_classifier.classify(testing_set[i][0])} Confidence: {vote_classifier.get_confidence_of_latest_vote()}")
+
 
 def create_and_train_algorithms(algorithm_list, training_set):
     """Takes a list of machine learning algorithm constructor functions. Instantiates each of
@@ -81,7 +89,7 @@ def test_algorithm_accuracy(algorithm_list, testing_set):
 def find_features(document, word_features):
     """Returns a dictionary of word-bool pairs. The words are taken from word_features, and
     the bool tells whether or not that word exists in the given document."""
-    doc_words = set(document)
+    doc_words = set(word_tokenize(document))
     return {word: (word in doc_words) for word in word_features}
 
 
